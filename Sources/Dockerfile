@@ -4,40 +4,38 @@ FROM debian:testing
 # Set the frontend to noninteractive to prevent interactive prompts during installations
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Add i386 architecture support and update package list
+# Add i386 architecture support, WineHQ repository for Trixie, and update package list
 RUN set -x \
     && dpkg --add-architecture i386 \
-    && echo 'deb http://deb.debian.org/debian bookworm main' | tee /etc/apt/sources.list.d/bookworm.list\
-    && apt update -qy && apt clean
+    && echo 'deb http://deb.debian.org/debian bookworm main' | tee /etc/apt/sources.list.d/bookworm.list \
+    && apt update -qy \
+    && apt clean
 
-# Install essential tools and dependencies without unnecessary recommended packages
-RUN apt install --no-install-recommends -qfy\
+# Install essential tools, dependencies, and WineHQ development version without unnecessary recommended packages
+RUN apt install --no-install-recommends -qfy \
     apt-transport-https \
     git \
     gpg-agent \
     rename \
     software-properties-common \
-    unzip\
+    unzip \
     wget \
     && apt clean
 
-# Download and add the WineHQ repository key, then add the repository
-RUN wget -nv https://dl.winehq.org/wine-builds/winehq.key \
-    && apt-key add winehq.key \
-    && add-apt-repository 'https://dl.winehq.org/wine-builds/debian/'
-
-# Update package list and install Wine and its dependencies without unnecessary packages
-RUN apt update -qy\
-    && apt install --no-install-recommends -qfy\
+    # insltall winehq-devel to support newest python versions
+    RUN mkdir -pm755 /etc/apt/keyrings\
+    && wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key\
+    && wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/debian/dists/trixie/winehq-trixie.sources \
+    && apt update -qy \
+    && apt install --no-install-recommends -qfy \
     cabextract \
     fonts-wine \
     libwine \
     libwine:i386 \
     winbind \
-    wine \
-    wine32 \
-    wine64 \
+    winehq-devel \
     && apt clean
+
 
 # Download and set up Winetricks for further configuration of Wine
 RUN wget -nv https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks \
@@ -84,8 +82,12 @@ RUN unzip "winlibs.zip" -d './' \
 # Set working directory to Wine drive C
 WORKDIR "$W_DRIVE_C"
 
+# Create python folder and set environment variable
+ENV PYTT="$W_DRIVE_C/python"
+RUN mkdir -p "${PYTT}"
+
 # Define the Python FTP repository for MSI installation files
-ARG PYTHON_VERSION=3.10.2 
+ARG PYTHON_VERSION=3.13.0
 ARG PY_FTP_REPO=https://www.python.org/ftp/python/$PYTHON_VERSION/amd64
 
 # Add all Python MSI files into the container
@@ -95,24 +97,34 @@ ADD ${PY_FTP_REPO}/exe.msi /tmppy/exe.msi
 ADD ${PY_FTP_REPO}/lib.msi /tmppy/lib.msi
 ADD ${PY_FTP_REPO}/path.msi /tmppy/path.msi
 ADD ${PY_FTP_REPO}/tcltk.msi /tmppy/tcltk.msi
-ADD ${PY_FTP_REPO}/tools.msi /tmppy/tools.msi
+#no more tools in repo 
 
 # Install each Python MSI file using Wine
 RUN ls /tmppy \
-    && for msifile in `echo core dev exe lib path pip tcltk tools`; do \
+    && for msifile in `echo core dev exe lib path pip tcltk`; do \
     wine msiexec /i "/tmppy/${msifile}.msi" /qb TARGETDIR=C:/python && echo "DONE:${msifile}"; \  
     done\
-    && rm -rf "/tmppy/"\
-    && chmod -R a+rx "$W_DRIVE_C/python"
+    && rm -rf "/tmppy/"
 
-# Set Python environment variable
-ENV PYTT="$W_DRIVE_C/python"
 
-# Update PyConfig.h file
-COPY ../py_conf_update.sh /py_conf_update.sh
-RUN chmod a+rx /py_conf_update.sh\
-    && /py_conf_update.sh\
-    && rm /py_conf_update.sh
+## Alternatively, copy python from the host
+# COPY ../Python313 "${PYTT}/"
+
+# Make the python folder executable recursively
+RUN chmod -R a+rx "$PYTT" && ls "$PYTT/include"
+
+# Update PyConfig.h file to use MS_WIN64 as a compiler flag
+ARG FILE_PATH="${PYTT}/include/pyconfig.h"
+ARG TEXT_TO_ADD='#ifdef __MINGW32__\n#ifdef _WIN64\n#define MS_WIN64\n#endif\n#endif'
+RUN if [[ ! -f "$FILE_PATH" ]]; then \
+    echo "Error: File $FILE_PATH not found." && \
+    exit 1; \
+    fi && \
+    sed -i "/\/\* Compiler specific defines \*\//a $TEXT_TO_ADD" "$FILE_PATH" && \
+    echo "Text added successfully to $FILE_PATH." && \
+    cat "$FILE_PATH"
+
+
 
 # Add get-pip script for installing pip
 ADD https://bootstrap.pypa.io/get-pip.py "${PYTT}/get-pip.py"
