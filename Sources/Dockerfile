@@ -152,13 +152,3 @@ WORKDIR /wine/drive_c/src/
 
 # Create temporary directory within the Wine environment
 RUN mkdir -p /wine/drive_c/tmp
-
-# Copy entrypoint and Cython build scripts into the container
-COPY ../entrypoint.sh /entrypoint.sh
-COPY ../cython_build.py /cython_build.py
-
-# Make the entrypoint and build scripts executable
-RUN chmod a+rx /entrypoint.sh /cython_build.py
-
-# Set the container's entrypoint to the entrypoint script
-ENTRYPOINT ["/entrypoint.sh"]
