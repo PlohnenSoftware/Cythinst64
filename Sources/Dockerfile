@@ -76,6 +76,7 @@ RUN unzip "winlibs.zip" -d './' \
     && ls\
     && rm winlibs.zip\
     && wine reg add "HKEY_CURRENT_USER\Environment" /v PATH /t REG_SZ /d "C:\\mingw64\bin;%PATH%" /f \
+    && wine reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH /t REG_SZ /d "C:\\mingw64\\bin;%PATH%" /f\
     && echo "gcc --version"| wine cmd
 
 
@@ -101,7 +102,7 @@ ADD ${PY_FTP_REPO}/tcltk.msi /tmppy/tcltk.msi
 
 # Install each Python MSI file using Wine
 RUN ls /tmppy \
-    && for msifile in `echo core dev exe lib path pip tcltk`; do \
+    && for msifile in `echo core dev exe lib path tcltk`; do \
     wine msiexec /i "/tmppy/${msifile}.msi" /qb TARGETDIR=C:/python && echo "DONE:${msifile}"; \  
     done\
     && rm -rf "/tmppy/"
@@ -114,15 +115,15 @@ RUN ls /tmppy \
 RUN chmod -R a+rx "$PYTT" && ls "$PYTT/include"
 
 # Update PyConfig.h file to use MS_WIN64 as a compiler flag
-ARG FILE_PATH="${PYTT}/include/pyconfig.h"
+ARG PYTHON_CONFIG_FILE_PATH="${PYTT}/include/pyconfig.h"
 ARG TEXT_TO_ADD='#ifdef __MINGW32__\n#ifdef _WIN64\n#define MS_WIN64\n#endif\n#endif'
-RUN if [[ ! -f "$FILE_PATH" ]]; then \
-    echo "Error: File $FILE_PATH not found." && \
+RUN if [[ ! -f "$PYTHON_CONFIG_FILE_PATH" ]]; then \
+    echo "Error: File $PYTHON_CONFIG_FILE_PATH not found." && \
     exit 1; \
     fi && \
-    sed -i "/\/\* Compiler specific defines \*\//a $TEXT_TO_ADD" "$FILE_PATH" && \
-    echo "Text added successfully to $FILE_PATH." && \
-    cat "$FILE_PATH"
+    sed -i "/\/\* Compiler specific defines \*\//a $TEXT_TO_ADD" "$PYTHON_CONFIG_FILE_PATH" && \
+    echo "Text added successfully to $PYTHON_CONFIG_FILE_PATH." && \
+    cat "$PYTHON_CONFIG_FILE_PATH"
 
 
 
