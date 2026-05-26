@@ -15,5 +15,3 @@ sed -i "/\/\* Compiler specific defines \*\//a $TEXT_TO_ADD" "$FILE_PATH"
 
 # Confirm success
 echo "Text added successfully to $FILE_PATH."
-# print file content
-cat $FILE_PATH
