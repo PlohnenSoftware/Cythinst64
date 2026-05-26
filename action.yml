@@ -1,37 +1,39 @@
-# action.yaml
+# Keep this action name stable so Marketplace releases continue to publish
+# to https://github.com/marketplace/actions/cythinst-64.
 name: 'Cythinst 64'
-description: 'Customisable GitHub Action to package your python code with PyInstaller for Windows'
+description: 'Build Windows PyInstaller executables with Wine, uv, Cython, and Windows Python 3.14'
+author: 'PlohnenSoftware'
 branding:
   icon: 'box'
   color: 'green'
 inputs:
   path:
-    description: 'Directory containing source code (optional requirements.txt).'
-    required: True
+    description: 'Project directory containing the PyInstaller spec file and either pyproject.toml/uv.lock or requirements.txt.'
+    required: true
     default: src
   pypi_url:
-    description: 'Specify a custom URL for PYPI'
-    required: False
+    description: 'Custom PyPI base URL used for pip compatibility when writing pip.ini.'
+    required: false
     default: https://pypi.python.org/
   pypi_index_url:
-    description: 'Specify a custom URL for PYPI Index'
-    required: False
+    description: 'Custom Python package index URL used by uv and pip.'
+    required: false
     default: https://pypi.python.org/simple
   spec:
-    description: 'Specify a file path for .spec file'
-    required: False
-    default: ""
+    description: 'PyInstaller spec file to build. Relative to the selected path.'
+    required: false
+    default: "*.spec"
   requirements:
-    description: 'Specify a file path for requirements.txt file'
-    required: False
+    description: 'Requirements file used only when pyproject.toml is not present.'
+    required: false
     default: "requirements.txt"
   cython_out:
-    description: 'Specify a folder path for precompiled cython files (relative to the SRC folder)'
-    required: False
+    description: 'Optional output directory for compiled .pyd files, relative to the selected path.'
+    required: false
     default: ""
 outputs:
   output:
-    description: 'The output of PyInstaller'
+    description: 'Reserved for future build metadata. Built files are written to <path>/dist/windows.'
 
 runs:
   using: 'docker'

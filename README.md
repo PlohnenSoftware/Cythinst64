@@ -177,6 +177,24 @@ docker push zamkorus/cythinst64:3.14.5
 docker push zamkorus/cythinst64:latest
 ```
 
+## Publishing To GitHub Marketplace
+
+The Marketplace listing at `https://github.com/marketplace/actions/cythinst-64` depends on the action metadata in the root `action.yml`.
+
+Keep this metadata name stable:
+
+```yaml
+name: 'Cythinst 64'
+```
+
+Changing the action name can make GitHub treat it as a different Marketplace action. Update the description, README, Docker image tag, and release notes freely, but keep the name as `Cythinst 64` when publishing to the existing listing.
+
+To publish an update, create a GitHub release from the repository and select **Publish this Action to the GitHub Marketplace**. Use a Git tag such as `v1.1.0` or `v1.2.0`, then users can pin the action with:
+
+```yaml
+- uses: PlohnenSoftware/Cythinst64@v1.2.0
+```
+
 ## Updating The Builder
 
 To bump Python, update these args in `Sources/Dockerfile`:
