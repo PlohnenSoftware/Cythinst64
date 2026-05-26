@@ -1,4 +1,4 @@
-FROM zamkorus/cythinst64:3.14.5
+FROM zamkorus/cythinst64:3.13.13
 
 # Copy entrypoint and Cython build scripts into the container
 COPY entrypoint.sh /entrypoint.sh

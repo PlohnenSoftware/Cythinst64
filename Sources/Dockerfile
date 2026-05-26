@@ -43,11 +43,12 @@ USER root
 RUN install -d -m 0755 "$W_TMP" "$PYTT" /src \
     && chown -R root:root "$WINEPREFIX" /src
 
-# Python 3.14.5 is the latest stable Windows release as of 2026-05-26.
-ARG PYTHON_VERSION=3.14.5
+# Python 3.13.13 is the latest 3.13 maintenance release as of 2026-05-27.
+# It is the default because many PyInstaller/game dependencies publish wheels
+# for Python 3.13 before Python 3.14.
+ARG PYTHON_VERSION=3.13.13
 ARG PYTHON_ZIP_URL=https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.zip
-ARG PYTHON_ZIP_SHA256=c66c6e75aba5cc0434541089127557010da2af9f6ef653abc14bdb694fdf3594
-ARG GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py
+ARG PYTHON_ZIP_SHA256=5f066036aebfaa3aa9aa4d52f852022f24641e7b5bc52f2bf8bb7acbe7bab958
 
 # WinLibs provides the Windows-native MinGW toolchain used by setuptools/Cython.
 ARG WINLIBS_URL=https://github.com/brechtsanders/winlibs_mingw/releases/download/16.1.0posix-14.0.0-msvcrt-r2/winlibs-x86_64-posix-seh-gcc-16.1.0-mingw-w64msvcrt-14.0.0-r2.zip
@@ -66,7 +67,7 @@ RUN curl -fsSL "$PYTHON_ZIP_URL" -o /tmp/python.zip \
     && if [[ -n "$PYTHON_ZIP_SHA256" ]]; then echo "${PYTHON_ZIP_SHA256}  /tmp/python.zip" | sha256sum -c -; fi \
     && unzip -q /tmp/python.zip -d "$PYTT" \
     && rm /tmp/python.zip \
-    && curl -fsSL "$GET_PIP_URL" -o "$PYTT/get-pip.py" \
+    && find "$PYTT" -name 'python*._pth' -exec sed -i 's/^#import site/import site/' {} + \
     && chmod -R a+rx "$PYTT"
 
 RUN printf '%s\n' '#!/bin/sh' "exec wine 'C:\\python\\python.exe' \"\$@\"" > /usr/local/bin/python \
@@ -80,12 +81,10 @@ RUN printf '%s\n' '#!/bin/sh' "exec wine 'C:\\python\\python.exe' \"\$@\"" > /us
     && chmod +x /usr/local/bin/python /usr/local/bin/pip /usr/local/bin/uv /usr/local/bin/easy_install /usr/local/bin/pyinstaller /usr/local/bin/pyupdater /usr/local/bin/cython /usr/local/bin/cythonize \
     && wine --version \
     && python -V \
-    && python "$PYTT/get-pip.py" \
     && python -m pip install --upgrade pip setuptools wheel uv \
     && uv pip install --system --python 'C:\python\python.exe' --upgrade cython pyinstaller \
     && cython --version \
     && pyinstaller --version \
-    && rm -f "$PYTT/get-pip.py" \
     && rm -rf /tmp/.wine-* /root/.cache /home/builder/.cache
 
 COPY py_conf_update.sh /py_conf_update.sh

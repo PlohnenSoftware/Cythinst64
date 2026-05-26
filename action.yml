@@ -1,7 +1,7 @@
 # Keep this action name stable so Marketplace releases continue to publish
 # to https://github.com/marketplace/actions/cythinst-64.
 name: 'Cythinst 64'
-description: 'Build Windows PyInstaller executables with Wine, uv, Cython, and Windows Python 3.14'
+description: 'Build Windows PyInstaller executables with Wine, uv, Cython, and Windows Python 3.13'
 author: 'PlohnenSoftware'
 branding:
   icon: 'box'

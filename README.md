@@ -11,7 +11,7 @@ The current base builder is built from `Sources/Dockerfile` and uses:
 - `cachyos/cachyos:latest` as a rolling-release base image.
 - `paru` for CachyOS/Arch package installation.
 - Wine `win64` prefix at `/wine`.
-- Windows Python `3.14.5` installed at `C:\python`.
+- Windows Python `3.13.13` installed at `C:\python`.
 - `uv` installed inside the Windows Python environment with `pip`.
 - Cython and PyInstaller installed into the Windows Python environment with `uv pip`.
 - WinLibs MinGW-w64 GCC for building Windows C/Cython extensions.
@@ -20,23 +20,33 @@ The Linux side intentionally does not install Arch `python`, `python-pip`, or `c
 
 No AUR packages are currently required. `paru` is present so AUR packages can be added later if there is a specific need.
 
-## Project Support
+## Dependency Support
 
-The action supports two dependency styles.
+The action installs project dependencies into the Windows Python environment that is already inside the image. It does not create a uv virtual environment during the action run.
 
-### uv Projects
+### pyproject.toml Projects
 
-If the selected project directory contains `pyproject.toml`, the action treats it as a uv project.
+If the selected project directory or one of its parent directories contains `pyproject.toml`, the action uses it for project metadata. This supports repositories where `pyproject.toml` lives at the repository root while the PyInstaller spec lives in a nested `src/` directory.
 
-If `uv.lock` is present, the action runs uv with `--frozen`, so the lockfile must already be up to date. If `uv.lock` is absent, uv resolves dependencies during the build and may create/update the lockfile inside the container workspace.
+If the selected `path` also contains the configured requirements file, the requirements file wins and is installed with:
+
+```bash
+uv pip install --system --python 'C:\python\python.exe' -r requirements.txt
+```
+
+If there is no requirements file, the action extracts `[project].dependencies` from `pyproject.toml` and installs those dependencies into `C:\python` with `uv pip`.
+
+`uv.lock` is not used by the action at runtime. This is intentional: the action keeps one Python environment, the image's Windows Python, so projects do not need to list PyInstaller or Cython just to make them visible inside a uv-created virtual environment.
+
+The action uses the Windows Python already installed in the image. It does not let uv download a separate Python interpreter during the build. If `.python-version` or `requires-python` pins a different Python version, the action exits with a clear error so you can choose a matching builder tag or update the project pin.
 
 PyInstaller is run through:
 
 ```bash
-uv run --python 'C:\python\python.exe' --with pyinstaller pyinstaller ...
+pyinstaller ...
 ```
 
-For Cython builds, the action also adds `cython`, `setuptools`, and `wheel` to the uv run environment.
+For Cython builds, the action uses the globally installed Cython, setuptools, wheel, and WinLibs toolchain from the image.
 
 ### requirements.txt Projects
 
@@ -58,6 +68,16 @@ For a uv project, a typical layout is:
 src/
   pyproject.toml
   uv.lock
+  app.py
+  app.spec
+```
+
+Projects with config at the repository root are also supported:
+
+```text
+pyproject.toml
+uv.lock
+src/
   app.py
   app.spec
 ```
@@ -148,13 +168,13 @@ The helper script is `cython_build.py`. It currently uses MinGW through Wine and
 There are two Dockerfiles:
 
 - `Sources/Dockerfile` builds the full CachyOS/Wine/Windows-Python base image.
-- `Dockerfile` is the lightweight GitHub Action image that starts from `zamkorus/cythinst64:3.14.5` and copies the current action scripts.
+- `Dockerfile` is the lightweight GitHub Action image that starts from `zamkorus/cythinst64:3.13.13` and copies the current action scripts.
 
 Build and tag the base builder:
 
 ```bash
-docker build -f Sources/Dockerfile -t zamkorus/cythinst64:3.14.5 .
-docker tag zamkorus/cythinst64:3.14.5 zamkorus/cythinst64:latest
+docker build -f Sources/Dockerfile -t zamkorus/cythinst64:3.13.13 .
+docker tag zamkorus/cythinst64:3.13.13 zamkorus/cythinst64:latest
 ```
 
 Build the action wrapper image:
@@ -166,14 +186,14 @@ docker build -f Dockerfile -t cythinst64-action-test .
 Smoke-test the toolchain:
 
 ```bash
-docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.14.5 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version"
+docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version"
 ```
 
 Push the base image when ready:
 
 ```bash
 docker login
-docker push zamkorus/cythinst64:3.14.5
+docker push zamkorus/cythinst64:3.13.13
 docker push zamkorus/cythinst64:latest
 ```
 
@@ -208,7 +228,7 @@ Then rebuild the base image and rerun the smoke tests.
 To bump WinLibs, update `WINLIBS_URL` in `Sources/Dockerfile`, rebuild, and confirm:
 
 ```bash
-docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.14.5 -lc "echo 'gcc --version' | wine cmd"
+docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "echo 'gcc --version' | wine cmd"
 ```
 
 ## Notes For Agents And Maintainers
@@ -219,7 +239,7 @@ This repo has a few important conventions that are easy to miss when editing it 
 
 `Sources/Dockerfile` is the heavy base image. It installs CachyOS packages, Wine, Windows Python, WinLibs, uv, Cython, and PyInstaller.
 
-`Dockerfile` is the GitHub Action wrapper image. It starts from the published base image, currently `zamkorus/cythinst64:3.14.5`, and only copies the current `entrypoint.sh` and `cython_build.py`.
+`Dockerfile` is the GitHub Action wrapper image. It starts from the published base image, currently `zamkorus/cythinst64:3.13.13`, and only copies the current `entrypoint.sh` and `cython_build.py`.
 
 When changing Wine, Python, uv, Cython, PyInstaller, WinLibs, or system packages, edit `Sources/Dockerfile`.
 
@@ -240,12 +260,11 @@ The command wrappers in `/usr/local/bin` call Windows executables through Wine. 
 
 The entrypoint chooses dependency mode from files in the selected `path`:
 
-- `pyproject.toml` present: use uv project mode.
-- `uv.lock` present too: add `--frozen`.
-- no `pyproject.toml`, requirements file present: use `uv pip install --system`.
+- requirements file present in `path`: install it into global Windows Python with `uv pip install --system`.
+- no requirements file, `pyproject.toml` present in `path` or a parent directory: extract `[project].dependencies` and install them into global Windows Python with `uv pip install --system`.
 - neither present: run PyInstaller with image defaults.
 
-For uv project mode, PyInstaller is intentionally run through `uv run` so project dependencies are visible. For requirements mode, packages are installed into the global Windows Python environment inside the container.
+The image Windows Python must satisfy `.python-version` or an exact `requires-python` project pin. The action does not use `uv run`, does not create `.venv`, and does not consume `uv.lock` during the build.
 
 ### Line Endings
 
@@ -268,9 +287,9 @@ Avoid Chocolatey inside Wine unless there is a strong reason. Direct Python.org 
 After changing `Sources/Dockerfile`:
 
 ```bash
-docker build -f Sources/Dockerfile -t zamkorus/cythinst64:3.14.5 .
-docker tag zamkorus/cythinst64:3.14.5 zamkorus/cythinst64:latest
-docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.14.5 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version"
+docker build -f Sources/Dockerfile -t zamkorus/cythinst64:3.13.13 .
+docker tag zamkorus/cythinst64:3.13.13 zamkorus/cythinst64:latest
+docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version"
 ```
 
 After changing `Dockerfile`, `entrypoint.sh`, or `cython_build.py`:
@@ -286,7 +305,8 @@ For a real behavior check, create a tiny project with `pyproject.toml`, generate
 For another project, agents should check:
 
 - The action `path` input points to the directory containing the `.spec` file.
-- uv projects commit both `pyproject.toml` and, when reproducibility matters, `uv.lock`.
+- `pyproject.toml` may live in that directory or a parent directory.
+- `uv.lock` may exist for local development, but this action installs into the image's global Windows Python.
 - requirements projects have the expected requirements file path.
 - The `.spec` file does not contain absolute paths from a developer machine.
 - Output is expected under `<path>/dist/windows`.
@@ -298,13 +318,9 @@ For another project, agents should check:
 
 Check the `path` input. The default is `src`, and the action expects that directory to exist.
 
-### uv says the lockfile is out of date
+### uv.lock is ignored
 
-If `uv.lock` exists, the action uses `--frozen`. Update the lockfile locally and commit it:
-
-```bash
-uv lock
-```
+The action currently installs dependencies into the image's global Windows Python. It does not create a uv project environment, so it does not use `uv.lock` at build time.
 
 ### Wine prints graphics or RPC warnings
 
