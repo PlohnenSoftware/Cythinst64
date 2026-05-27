@@ -128,12 +128,16 @@ jobs:
         uses: PlohnenSoftware/Cythinst64@main
         with:
           path: src
+          zip_name: app.zip
+          zip_paths: |
+            src/dist/windows
+            README.md
 
       - name: Upload Packaged Executable
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: src/dist/windows
+          path: app.zip
 ```
 
 ## Inputs
@@ -144,8 +148,12 @@ jobs:
 | `pypi_url` | `https://pypi.python.org/` | Custom package index base URL for pip compatibility. |
 | `pypi_index_url` | `https://pypi.python.org/simple` | Custom package index URL used by pip and uv. |
 | `spec` | `*.spec` | PyInstaller spec file to build. |
-| `requirements` | `requirements.txt` | Requirements file used when no `pyproject.toml` is present. |
+| `requirements` | `requirements.txt` | Requirements file relative to `path`. When present, it is installed before `pyproject.toml` dependencies are considered. |
 | `cython_out` | empty | Optional output directory, relative to the project directory, for compiled `.pyd` files. |
+| `zip_name` | empty | Optional `.zip` package to create after a successful build, relative to the repository root. Empty disables zip creation. |
+| `zip_paths` | empty | Newline-separated repository-root-relative files, directories, or glob patterns. Each selected path is placed at the archive root. Required when `zip_name` is set. |
+| `zip_method` | `bzip2` | ZIP compression method: `bzip2`, `lzma`, `deflate`, or `store`. |
+| `zip_level` | `9` | ZIP compression level from `0` to `9`. Used by `deflate` and `bzip2`; accepted for all methods for a stable interface. |
 
 ## Cython Builds
 
@@ -162,6 +170,35 @@ Example:
 ```
 
 The helper script is `cython_build.py`. It currently uses MinGW through Wine and builds `.pyx` files with `setuptools`.
+
+## ZIP Packages
+
+Set `zip_name` to create a `.zip` after PyInstaller finishes. `zip_name` is relative to the repository root. Each `zip_paths` entry is resolved from the repository root, then placed at the archive root.
+
+Example:
+
+```yaml
+- name: Package Application
+  uses: PlohnenSoftware/Cythinst64@main
+  with:
+    path: src
+    cython_out: prec
+    zip_name: familiada.zip
+    zip_paths: |
+      src/dist/windows
+      dane.csv
+```
+
+This creates `familiada.zip` with entries such as `Familiada.exe` and `dane.csv`. If you pass a parent directory, the archive keeps the path below that selected directory. For example, `zip_paths: src/dist` would store `windows/Familiada.exe`.
+
+The default `zip_method` is `bzip2`, which usually compresses better than classic Deflate while staying better supported than ZIP LZMA. Use `deflate` when maximum compatibility with very old unzip tools matters:
+
+```yaml
+zip_method: deflate
+zip_level: 9
+```
+
+Supported methods are `bzip2`, `lzma`, `deflate`, and `store`.
 
 ## Local Docker Workflow
 
@@ -311,6 +348,7 @@ For another project, agents should check:
 - The `.spec` file does not contain absolute paths from a developer machine.
 - Output is expected under `<path>/dist/windows`.
 - Cython builds set `cython_out` only when `.pyx` compilation is actually needed.
+- ZIP packages set `zip_name` and list every included repository-relative file, directory, or glob in `zip_paths`. Select the deepest useful directory when you want flatter archive entries.
 
 ## Troubleshooting
 
@@ -329,6 +367,14 @@ Headless Wine often prints warnings about missing display, Vulkan, EGL, systray,
 ### PyInstaller cannot find files from the spec
 
 Check for absolute paths in the `.spec` file. Prefer paths relative to the project directory.
+
+### zip_paths did not match anything
+
+`zip_paths` entries are resolved from the repository root, not from the action `path`. Use paths like `src/dist/windows` or `dane.csv`.
+
+### ZIP package has duplicate file names
+
+Each selected file or directory is placed at the archive root. If two selected paths map to the same archive name, the action exits instead of silently overwriting one file. Select a parent directory to preserve enough folder structure.
 
 ## External Resources
 

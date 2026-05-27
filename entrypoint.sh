@@ -15,6 +15,10 @@ PYPI_INDEX_URL=${3:-"https://pypi.python.org/simple"}  # Default PyPI Index URL
 SPEC_FILE=${4:-*.spec}  # Default to an empty string for .spec file path
 REQUIREMENTS=${5:-"requirements.txt"}  # Default requirements file
 CYTHON_OUT=$6 # Default prec folder
+ZIP_NAME=${7:-}
+ZIP_PATHS=${8:-}
+ZIP_METHOD=${9:-bzip2}
+ZIP_LEVEL=${10:-9}
 WINDOWS_PYTHON='C:\python\python.exe'
 
 find_upwards() {
@@ -114,6 +118,7 @@ python_request_matches_container() {
 # In case the user specified a custom URL for PYPI, then use
 # that one, instead of the default one.
 UV_INDEX_ARGS=()
+REPO_ROOT="$(pwd -P)"
 
 if [[ "$PYPI_URL" != "https://pypi.python.org/" ]] || \
    [[ "$PYPI_INDEX_URL" != "https://pypi.python.org/simple" ]]; then
@@ -212,3 +217,18 @@ fi
 
 pyinstaller --clean -y --dist ./dist/windows --workpath /tmp $SPEC_FILE
 chown -R --reference=. ./dist/windows
+
+if [ -n "$ZIP_NAME" ]; then
+    cd "$REPO_ROOT"
+    echo "Creating zip package: $ZIP_NAME"
+    python /zip_package.py "$ZIP_NAME" "$ZIP_PATHS" "$ZIP_METHOD" "$ZIP_LEVEL"
+    chown --reference=. "$ZIP_NAME"
+fi
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    if [ -n "$ZIP_NAME" ]; then
+        echo "output=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+    else
+        echo "output=$WORKDIR/dist/windows" >> "$GITHUB_OUTPUT"
+    fi
+fi

@@ -8,7 +8,7 @@ branding:
   color: 'green'
 inputs:
   path:
-    description: 'Project directory containing the PyInstaller spec file and either pyproject.toml/uv.lock or requirements.txt.'
+    description: 'Project directory containing the PyInstaller spec file.'
     required: true
     default: src
   pypi_url:
@@ -24,16 +24,32 @@ inputs:
     required: false
     default: "*.spec"
   requirements:
-    description: 'Requirements file used only when pyproject.toml is not present.'
+    description: 'Requirements file, relative to path. When present, it is installed before pyproject.toml dependencies are considered.'
     required: false
     default: "requirements.txt"
   cython_out:
     description: 'Optional output directory for compiled .pyd files, relative to the selected path.'
     required: false
     default: ""
+  zip_name:
+    description: 'Optional .zip file to create after a successful build, relative to the repository root. Leave empty to skip zip creation.'
+    required: false
+    default: ""
+  zip_paths:
+    description: 'Newline-separated repository-root-relative files, directories, or glob patterns. Each selected path is placed at the archive root.'
+    required: false
+    default: ""
+  zip_method:
+    description: 'ZIP compression method: bzip2, lzma, deflate, or store.'
+    required: false
+    default: "bzip2"
+  zip_level:
+    description: 'ZIP compression level from 0 to 9. Used by deflate and bzip2; accepted for all methods for a stable interface.'
+    required: false
+    default: "9"
 outputs:
   output:
-    description: 'Reserved for future build metadata. Built files are written to <path>/dist/windows.'
+    description: 'zip_name when a zip is created, otherwise <path>/dist/windows.'
 
 runs:
   using: 'docker'
@@ -45,3 +61,7 @@ runs:
     - ${{ inputs.spec }}
     - ${{ inputs.requirements }}
     - ${{ inputs.cython_out }}
+    - ${{ inputs.zip_name }}
+    - ${{ inputs.zip_paths }}
+    - ${{ inputs.zip_method }}
+    - ${{ inputs.zip_level }}
