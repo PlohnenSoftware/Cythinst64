@@ -232,7 +232,10 @@ create_zip() {
         method_arg="-mm=Deflate"
     fi
 
-    "$sevenzip" a -tzip "-mx=$level_text" "$method_arg" -bd "$ARCHIVE_PATH" "@$list_file" >/dev/null
+    (
+        cd "$temp_dir"
+        "$sevenzip" a -tzip "-mx=$level_text" "$method_arg" -bd "$ARCHIVE_PATH" "@$list_file" >/dev/null
+    )
     rm -rf "$temp_dir"
     echo "Created ${ARCHIVE_PATH#"$REPO_ROOT"/} with ${#FILES[@]} files using zip/$method_name"
 }
@@ -254,17 +257,20 @@ create_7z() {
     list_file="$temp_dir/.cythinst-archive-list.txt"
     stage_files "$temp_dir" "$list_file"
 
-    "$sevenzip" a \
-        -t7z \
-        -mx=9 \
-        "-m0=${SEVENZIP_METHOD}" \
-        "-md=${SEVENZIP_DICTIONARY}" \
-        "-mfb=${SEVENZIP_WORD_SIZE}" \
-        "-ms=${SEVENZIP_SOLID_BLOCK}" \
-        -mmt=on \
-        -bd \
-        "$ARCHIVE_PATH" \
-        "@$list_file" >/dev/null
+    (
+        cd "$temp_dir"
+        "$sevenzip" a \
+            -t7z \
+            -mx=9 \
+            "-m0=${SEVENZIP_METHOD}" \
+            "-md=${SEVENZIP_DICTIONARY}" \
+            "-mfb=${SEVENZIP_WORD_SIZE}" \
+            "-ms=${SEVENZIP_SOLID_BLOCK}" \
+            -mmt=on \
+            -bd \
+            "$ARCHIVE_PATH" \
+            "@$list_file" >/dev/null
+    )
 
     rm -rf "$temp_dir"
     echo "Created ${ARCHIVE_PATH#"$REPO_ROOT"/} with ${#FILES[@]} files using 7z/${SEVENZIP_METHOD} ultra, dictionary ${SEVENZIP_DICTIONARY}, word ${SEVENZIP_WORD_SIZE}, solid block ${SEVENZIP_SOLID_BLOCK}"
