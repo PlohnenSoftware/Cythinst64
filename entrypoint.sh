@@ -17,9 +17,16 @@ REQUIREMENTS=${5:-"requirements.txt"}  # Default requirements file
 CYTHON_OUT=$6 # Default prec folder
 ZIP_NAME=${7:-}
 ZIP_PATHS=${8:-}
-ZIP_METHOD=${9:-bzip2}
+ZIP_METHOD=${9:-deflate}
 ZIP_LEVEL=${10:-9}
+SEVENZIP_NAME=${11:-}
 WINDOWS_PYTHON='C:\python\python.exe'
+
+archive_stem() {
+    local archive_name="$1"
+    archive_name="${archive_name##*/}"
+    printf '%s\n' "${archive_name%.*}"
+}
 
 find_upwards() {
     local name="$1"
@@ -225,17 +232,47 @@ fi
 pyinstaller --clean -y --dist ./dist/windows --workpath /tmp $SPEC_FILE
 chown -R --reference=. ./dist/windows
 
+ARCHIVE_EXCLUDES=""
+if [ -n "$ZIP_NAME" ]; then
+    ARCHIVE_EXCLUDES="${ARCHIVE_EXCLUDES}${ZIP_NAME}"$'\n'
+fi
+if [ -n "$SEVENZIP_NAME" ]; then
+    ARCHIVE_EXCLUDES="${ARCHIVE_EXCLUDES}${SEVENZIP_NAME}"$'\n'
+fi
+
+if [ -n "$ZIP_NAME" ] && [ -n "$SEVENZIP_NAME" ]; then
+    if [ "$(archive_stem "$ZIP_NAME")" != "$(archive_stem "$SEVENZIP_NAME")" ]; then
+        echo "Error: zip_name and sevenzip_name must use the same base name, for example app.zip and app.7z."
+        exit 2
+    fi
+fi
+
 if [ -n "$ZIP_NAME" ]; then
     cd "$REPO_ROOT"
     echo "Creating zip package: $ZIP_NAME"
-    python /zip_package.py "$ZIP_NAME" "$ZIP_PATHS" "$ZIP_METHOD" "$ZIP_LEVEL"
+    /archive.sh zip "$ZIP_NAME" "$ZIP_PATHS" "$ZIP_METHOD" "$ZIP_LEVEL" "$ARCHIVE_EXCLUDES"
     chown --reference=. "$ZIP_NAME"
 fi
 
+if [ -n "$SEVENZIP_NAME" ]; then
+    cd "$REPO_ROOT"
+    echo "Creating 7z package: $SEVENZIP_NAME"
+    /archive.sh 7z "$SEVENZIP_NAME" "$ZIP_PATHS" "$ARCHIVE_EXCLUDES"
+    chown --reference=. "$SEVENZIP_NAME"
+fi
+
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "dist=$WORKDIR/dist/windows" >> "$GITHUB_OUTPUT"
     if [ -n "$ZIP_NAME" ]; then
+        echo "zip_output=$ZIP_NAME" >> "$GITHUB_OUTPUT"
         echo "output=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+    elif [ -n "$SEVENZIP_NAME" ]; then
+        echo "sevenzip_output=$SEVENZIP_NAME" >> "$GITHUB_OUTPUT"
+        echo "output=$SEVENZIP_NAME" >> "$GITHUB_OUTPUT"
     else
         echo "output=$WORKDIR/dist/windows" >> "$GITHUB_OUTPUT"
+    fi
+    if [ -n "$SEVENZIP_NAME" ] && [ -n "$ZIP_NAME" ]; then
+        echo "sevenzip_output=$SEVENZIP_NAME" >> "$GITHUB_OUTPUT"
     fi
 fi

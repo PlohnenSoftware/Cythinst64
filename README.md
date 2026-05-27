@@ -15,6 +15,7 @@ The current base builder is built from `Sources/Dockerfile` and uses:
 - `uv` installed inside the Windows Python environment with `pip`.
 - Cython and PyInstaller installed into the Windows Python environment with `uv pip`.
 - WinLibs MinGW-w64 GCC for building Windows C/Cython extensions.
+- 7-Zip for optional `.7z` packages with maximum compression.
 
 The Linux side intentionally does not install Arch `python`, `python-pip`, or `cython` for the build workflow. The wrappers named `python`, `pip`, `uv`, `cython`, and `pyinstaller` call the Windows executables through Wine.
 
@@ -129,15 +130,23 @@ jobs:
         with:
           path: src
           zip_name: app.zip
+          sevenzip_name: app.7z
           zip_paths: |
             src/dist/windows
             README.md
 
-      - name: Upload Packaged Executable
+      - name: Upload ZIP Package
         uses: actions/upload-artifact@v7
         with:
-          name: windows-build
+          name: app.zip
           path: app.zip
+          archive: false
+
+      - name: Upload 7z Package
+        uses: actions/upload-artifact@v7
+        with:
+          name: app.7z
+          path: app.7z
           archive: false
 ```
 
@@ -151,10 +160,11 @@ jobs:
 | `spec` | `*.spec` | PyInstaller spec file to build. |
 | `requirements` | `requirements.txt` | Requirements file relative to `path`. When present, it is installed before `pyproject.toml` dependencies are considered. |
 | `cython_out` | empty | Optional output directory, relative to the project directory, for compiled `.pyd` files. |
-| `zip_name` | empty | Optional `.zip` package to create after a successful build, relative to the repository root. Empty disables zip creation. |
-| `zip_paths` | empty | Newline-separated repository-root-relative files, directories, or glob patterns. Each selected path is placed at the archive root. Required when `zip_name` is set. |
-| `zip_method` | `bzip2` | ZIP compression method: `bzip2`, `lzma`, `deflate`, or `store`. |
-| `zip_level` | `9` | ZIP compression level from `0` to `9`. Used by `deflate` and `bzip2`; accepted for all methods for a stable interface. |
+| `zip_name` | empty | Optional `.zip` package to create after a successful build, relative to the repository root. Empty disables ZIP creation. |
+| `sevenzip_name` | empty | Optional `.7z` package to create after a successful build, relative to the repository root. Use the same base name as `zip_name`, for example `app.zip` and `app.7z`. |
+| `zip_paths` | empty | Newline-separated repository-root-relative files, directories, or glob patterns. Each selected path is placed at the archive root in both `.zip` and `.7z` packages. Required when either package output is set. |
+| `zip_method` | `deflate` | ZIP compression method: `deflate` or `store`. Use `sevenzip_name` for stronger compression. |
+| `zip_level` | `9` | ZIP compression level from `0` to `9`. Used by `deflate`; accepted for `store` for a stable interface. |
 
 ## Cython Builds
 
@@ -172,9 +182,13 @@ Example:
 
 The helper script is `cython_build.py`. It currently uses MinGW through Wine and builds `.pyx` files with `setuptools`.
 
-## ZIP Packages
+## Archive Packages
 
-Set `zip_name` to create a `.zip` after PyInstaller finishes. `zip_name` is relative to the repository root. Each `zip_paths` entry is resolved from the repository root, then placed at the archive root.
+Set `zip_name` to create a compatibility-focused `.zip` after PyInstaller finishes. ZIP output uses Deflate by default because Windows Explorer and older unzip tools handle it reliably.
+
+Set `sevenzip_name` to create a maximum-compression `.7z` package using system 7-Zip. Modern Windows Explorer can open `.7z`, and this is where stronger compression belongs.
+
+Both archive formats use the same `zip_paths` resolver. Each entry is resolved from the repository root, then placed at the archive root. A selected file is stored as its basename, and a selected directory stores its contents relative to that selected directory. If both outputs are enabled, `zip_name` and `sevenzip_name` must use the same base name, such as `familiada.zip` and `familiada.7z`.
 
 Example:
 
@@ -185,21 +199,34 @@ Example:
     path: src
     cython_out: prec
     zip_name: familiada.zip
+    sevenzip_name: familiada.7z
     zip_paths: |
       src/dist/windows
       dane.csv
 ```
 
-This creates `familiada.zip` with entries such as `Familiada.exe` and `dane.csv`. If you pass a parent directory, the archive keeps the path below that selected directory. For example, `zip_paths: src/dist` would store `windows/Familiada.exe`.
+This creates `familiada.zip` and `familiada.7z` with identical entries such as `Familiada.exe` and `dane.csv`. If you pass a parent directory, both archives keep the path below that selected directory. For example, `zip_paths: src/dist` would store `windows/Familiada.exe` in both outputs.
 
-The default `zip_method` is `bzip2`, which usually compresses better than classic Deflate while staying better supported than ZIP LZMA. Use `deflate` when maximum compatibility with very old unzip tools matters:
+Generated archive files are automatically excluded from both packages. That prevents broad inputs such as `zip_paths: .` from creating a ZIP that contains the 7z or a 7z that contains the ZIP.
+
+The `.7z` settings intentionally match 7-Zip's high-compression desktop profile:
+
+- Level: Ultra
+- Method: LZMA2
+- Dictionary: 4096 MB
+- Word size: 273
+- Solid block size: 16 GB
+
+Those settings favor smallest package size and may need more memory than a default GitHub runner has for very large inputs. If 7-Zip exits with a memory error, reduce the selected `zip_paths` set or rebuild the action with lighter 7z settings.
+
+The default `zip_method` is `deflate`:
 
 ```yaml
 zip_method: deflate
 zip_level: 9
 ```
 
-Supported methods are `bzip2`, `lzma`, `deflate`, and `store`.
+Supported ZIP methods are `deflate` and `store`.
 
 ## Local Docker Workflow
 
@@ -224,7 +251,7 @@ docker build -f Dockerfile -t cythinst64-action-test .
 Smoke-test the toolchain:
 
 ```bash
-docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version"
+docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version && (command -v 7z || command -v 7zz || command -v 7za)"
 ```
 
 Push the base image when ready:
@@ -275,9 +302,9 @@ This repo has a few important conventions that are easy to miss when editing it 
 
 ### Dockerfile Roles
 
-`Sources/Dockerfile` is the heavy base image. It installs CachyOS packages, Wine, Windows Python, WinLibs, uv, Cython, and PyInstaller.
+`Sources/Dockerfile` is the heavy base image. It installs CachyOS packages, Wine, Windows Python, WinLibs, uv, Cython, PyInstaller, and 7-Zip.
 
-`Dockerfile` is the GitHub Action wrapper image. It starts from the published base image, currently `zamkorus/cythinst64:3.13.13`, and only copies the current `entrypoint.sh`, `cython_build.py`, and `zip_package.py`.
+`Dockerfile` is the GitHub Action wrapper image. It starts from the published base image, currently `zamkorus/cythinst64:3.13.13`, and only copies the current `entrypoint.sh`, `cython_build.py`, and `archive.sh`.
 
 When changing Wine, Python, uv, Cython, PyInstaller, WinLibs, or system packages, edit `Sources/Dockerfile`.
 
@@ -344,7 +371,7 @@ After changing `Sources/Dockerfile`:
 ```bash
 docker build -f Sources/Dockerfile -t zamkorus/cythinst64:3.13.13 .
 docker tag zamkorus/cythinst64:3.13.13 zamkorus/cythinst64:latest
-docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version"
+docker run --rm --entrypoint /usr/bin/bash zamkorus/cythinst64:3.13.13 -lc "python -V && uv --version && cython --version && pyinstaller --version && wine --version && (command -v 7z || command -v 7zz || command -v 7za)"
 ```
 
 After changing `Dockerfile`, `entrypoint.sh`, or `cython_build.py`:
@@ -366,7 +393,7 @@ For another project, agents should check:
 - The `.spec` file does not contain absolute paths from a developer machine.
 - Output is expected under `<path>/dist/windows`.
 - Cython builds set `cython_out` only when `.pyx` compilation is actually needed.
-- ZIP packages set `zip_name` and list every included repository-relative file, directory, or glob in `zip_paths`. Select the deepest useful directory when you want flatter archive entries.
+- Archive packages set `zip_name`, `sevenzip_name`, or both, and list every included repository-relative file, directory, or glob in `zip_paths`. Select the deepest useful directory when you want flatter archive entries. Use the same base name for paired outputs, such as `app.zip` and `app.7z`.
 
 ## Troubleshooting
 
@@ -390,13 +417,13 @@ Check for absolute paths in the `.spec` file. Prefer paths relative to the proje
 
 `zip_paths` entries are resolved from the repository root, not from the action `path`. Use paths like `src/dist/windows` or `dane.csv`.
 
-### ZIP package has duplicate file names
+### Archive package has duplicate file names
 
 Each selected file or directory is placed at the archive root. If two selected paths map to the same archive name, the action exits instead of silently overwriting one file. Select a parent directory to preserve enough folder structure.
 
 ### Downloaded artifact contains a zip inside another zip
 
-Cythinst creates the file named by `zip_name` directly in the workspace. GitHub's `actions/upload-artifact@v7` archives uploads by default, so uploading `familiada.zip` without extra options produces an artifact download that contains `familiada.zip` inside GitHub's artifact zip.
+Cythinst creates the files named by `zip_name` and `sevenzip_name` directly in the workspace. GitHub's `actions/upload-artifact@v7` archives uploads by default, so uploading `familiada.zip` without extra options produces an artifact download that contains `familiada.zip` inside GitHub's artifact zip.
 
 Use `archive: false` when uploading a ZIP that Cythinst already created:
 
@@ -404,12 +431,12 @@ Use `archive: false` when uploading a ZIP that Cythinst already created:
 - name: Upload artifact
   uses: actions/upload-artifact@v7
   with:
-    name: familiada
+    name: familiada.zip
     path: familiada.zip
     archive: false
 ```
 
-Release uploads through `softprops/action-gh-release` do not need this option; they attach `familiada.zip` as the release asset directly.
+Do the same for `familiada.7z` if you upload it as a workflow artifact. Release uploads through `softprops/action-gh-release` do not need this option; they attach the archive files as release assets directly.
 
 ## External Resources
 
@@ -418,6 +445,7 @@ Release uploads through `softprops/action-gh-release` do not need this option; t
 - [uv](https://docs.astral.sh/uv/)
 - [PyInstaller](https://pyinstaller.org)
 - [Cython](https://cython.org)
+- [7-Zip](https://www.7-zip.org/)
 - [WinLibs](https://github.com/brechtsanders/winlibs_mingw)
 - [docker-pyinstaller](https://github.com/cdrx/docker-pyinstaller)
 - [pyinstaller-action-windows](https://github.com/JackMcKew/pyinstaller-action-windows)

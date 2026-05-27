@@ -31,6 +31,7 @@ RUN paru -Syu --noconfirm --needed --removemake \
         curl \
         git \
         perl \
+        7zip \
         unzip \
         wine \
         wine-gecko \
@@ -101,8 +102,8 @@ WORKDIR /wine/drive_c/src/
 
 COPY entrypoint.sh /entrypoint.sh
 COPY cython_build.py /cython_build.py
-COPY zip_package.py /zip_package.py
-RUN sed -i 's/\r$//' /entrypoint.sh /cython_build.py /zip_package.py \
-    && chmod a+rx /entrypoint.sh /cython_build.py /zip_package.py
+COPY archive.sh /archive.sh
+RUN sed -i 's/\r$//' /entrypoint.sh /cython_build.py /archive.sh \
+    && chmod a+rx /entrypoint.sh /cython_build.py /archive.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

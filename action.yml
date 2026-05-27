@@ -35,21 +35,31 @@ inputs:
     description: 'Optional .zip file to create after a successful build, relative to the repository root. Leave empty to skip zip creation.'
     required: false
     default: ""
+  sevenzip_name:
+    description: 'Optional .7z file to create after a successful build, relative to the repository root. Uses the same zip_paths archive-root mapping as zip_name.'
+    required: false
+    default: ""
   zip_paths:
-    description: 'Newline-separated repository-root-relative files, directories, or glob patterns. Each selected path is placed at the archive root.'
+    description: 'Newline-separated repository-root-relative files, directories, or glob patterns. Each selected path is placed at the archive root for both .zip and .7z packages.'
     required: false
     default: ""
   zip_method:
-    description: 'ZIP compression method: bzip2, lzma, deflate, or store.'
+    description: 'ZIP compression method: deflate or store. Use sevenzip_name for stronger compression.'
     required: false
-    default: "bzip2"
+    default: "deflate"
   zip_level:
-    description: 'ZIP compression level from 0 to 9. Used by deflate and bzip2; accepted for all methods for a stable interface.'
+    description: 'ZIP compression level from 0 to 9. Used by deflate; accepted for store for a stable interface.'
     required: false
     default: "9"
 outputs:
   output:
-    description: 'zip_name when a zip is created, otherwise <path>/dist/windows.'
+    description: 'zip_name when a ZIP is created, sevenzip_name when only a 7z is created, otherwise <path>/dist/windows.'
+  dist:
+    description: 'PyInstaller output directory, usually <path>/dist/windows.'
+  zip_output:
+    description: 'Created ZIP package path when zip_name is set.'
+  sevenzip_output:
+    description: 'Created 7z package path when sevenzip_name is set.'
 
 runs:
   using: 'docker'
@@ -65,3 +75,4 @@ runs:
     - ${{ inputs.zip_paths }}
     - ${{ inputs.zip_method }}
     - ${{ inputs.zip_level }}
+    - ${{ inputs.sevenzip_name }}
