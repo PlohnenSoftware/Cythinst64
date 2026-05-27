@@ -212,7 +212,14 @@ if [ -n "$CYTHON_OUT" ]; then
     python /cython_build.py
     cd "$WORKDIR"
     mkdir -p "$CYTHON_OUT"
-    mv ../*.pyd "$CYTHON_OUT/"
+    mapfile -t CYTHON_ARTIFACTS < <(find "$WORKDIR" "$WORKDIR/.." -maxdepth 1 -type f -name '*.pyd' -print)
+    if [ "${#CYTHON_ARTIFACTS[@]}" -eq 0 ]; then
+        echo "Error: Cython build completed, but no .pyd files were found in $WORKDIR or $WORKDIR/.."
+        exit 1
+    fi
+    for artifact in "${CYTHON_ARTIFACTS[@]}"; do
+        mv "$artifact" "$CYTHON_OUT/"
+    done
 fi
 
 pyinstaller --clean -y --dist ./dist/windows --workpath /tmp $SPEC_FILE

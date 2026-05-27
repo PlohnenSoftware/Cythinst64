@@ -276,11 +276,28 @@ This repo has a few important conventions that are easy to miss when editing it 
 
 `Sources/Dockerfile` is the heavy base image. It installs CachyOS packages, Wine, Windows Python, WinLibs, uv, Cython, and PyInstaller.
 
-`Dockerfile` is the GitHub Action wrapper image. It starts from the published base image, currently `zamkorus/cythinst64:3.13.13`, and only copies the current `entrypoint.sh` and `cython_build.py`.
+`Dockerfile` is the GitHub Action wrapper image. It starts from the published base image, currently `zamkorus/cythinst64:3.13.13`, and only copies the current `entrypoint.sh`, `cython_build.py`, and `zip_package.py`.
 
 When changing Wine, Python, uv, Cython, PyInstaller, WinLibs, or system packages, edit `Sources/Dockerfile`.
 
 When changing action behavior, arguments, dependency installation logic, or Cython/PyInstaller invocation, edit `entrypoint.sh` and then rebuild the root `Dockerfile` image if you want to test it as the action sees it.
+
+### Cython Artifact Handoff
+
+When `cython_out` is set, the action runs `cython_build.py` from the parent of the selected project directory. For a typical `path: src` build, that means Cython runs from the repository root while the source files still live under `src/`.
+
+Setuptools may place the compiled `.pyd` in either location depending on the project layout and extension path:
+
+- the selected project directory, for example `/github/workspace/src/helpers.cp313-win_amd64.pyd`;
+- the parent repository directory, for example `/github/workspace/helpers.cp313-win_amd64.pyd`.
+
+The entrypoint must collect `.pyd` files from both places before moving them into `cython_out`. If a GitHub Actions log shows Cython finishing successfully with a line like `copying ... -> src`, followed by `mv: cannot stat '../*.pyd'`, the Cython compile did not fail. The handoff path was too narrow and only looked in the parent directory.
+
+For this class of bug, check the log order carefully:
+
+- `Cythonizing`, `building '<module>' extension`, and `Setup build successful` means compilation worked.
+- `mv: cannot stat ...*.pyd` after that means the action failed while moving the compiled artifact.
+- Wine messages about `XDG_RUNTIME_DIR`, Vulkan, EGL, systray, or RPC services are usually unrelated noise unless the actual Python command exits unsuccessfully.
 
 ### Python Location
 
