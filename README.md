@@ -134,10 +134,11 @@ jobs:
             README.md
 
       - name: Upload Packaged Executable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-build
           path: app.zip
+          archive: false
 ```
 
 ## Inputs
@@ -392,6 +393,23 @@ Check for absolute paths in the `.spec` file. Prefer paths relative to the proje
 ### ZIP package has duplicate file names
 
 Each selected file or directory is placed at the archive root. If two selected paths map to the same archive name, the action exits instead of silently overwriting one file. Select a parent directory to preserve enough folder structure.
+
+### Downloaded artifact contains a zip inside another zip
+
+Cythinst creates the file named by `zip_name` directly in the workspace. GitHub's `actions/upload-artifact@v7` archives uploads by default, so uploading `familiada.zip` without extra options produces an artifact download that contains `familiada.zip` inside GitHub's artifact zip.
+
+Use `archive: false` when uploading a ZIP that Cythinst already created:
+
+```yaml
+- name: Upload artifact
+  uses: actions/upload-artifact@v7
+  with:
+    name: familiada
+    path: familiada.zip
+    archive: false
+```
+
+Release uploads through `softprops/action-gh-release` do not need this option; they attach `familiada.zip` as the release asset directly.
 
 ## External Resources
 
