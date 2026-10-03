@@ -1,0 +1,97 @@
+# Turn a version tag into a GitHub release.
+#
+#   git tag -a v3.1.0 -m v3.1.0 && git push origin v3.1.0
+#
+# Any v* tag works. Versioning is the maintainer's business, and so is a moving
+# major tag if you keep one -- move it yourself, this does not touch it. Note
+# that pushing such a tag also matches the filter below; narrow it to "v*.*" if
+# you would rather bare major tags were ignored.
+#
+# The Marketplace *listing* is made once, by hand: open action.yml on GitHub,
+# "Draft a release", tick "Publish this Action to the GitHub Marketplace" and
+# accept the Developer Agreement. GitHub exposes no API for that step. Once the
+# listing exists it follows this repository's releases, which is what this
+# workflow keeps flowing.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v3.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the tag
+        id: tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
+            || { echo "::error::tag $TAG does not exist"; exit 1; }
+          # v2.1.0-rc1 is a release, but not the latest one.
+          prerelease=false
+          case "$TAG" in *-*) prerelease=true ;; esac
+          {
+            echo "tag=$TAG"
+            echo "prerelease=$prerelease"
+            echo "sha=$(git rev-parse "refs/tags/$TAG^{commit}")"
+          } >> "$GITHUB_OUTPUT"
+
+      # A red self-test stops the release; a missing one only warns, so a
+      # repository without tests -- or a tag pushed before the run has finished
+      # -- is not blocked.
+      - name: Require a green self-test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.tag.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ ! -f .github/workflows/test.yml ]; then
+            echo "::notice::no test.yml in this repository, nothing to check."
+            exit 0
+          fi
+          results="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$SHA&status=completed" \
+            --jq '[.workflow_runs[].conclusion] | tostring')"
+          echo "completed test runs on $SHA: $results"
+          case "$results" in
+            *'"success"'*) echo "green." ;;
+            '[]')          echo "::warning::no completed test run for $SHA -- releasing anyway." ;;
+            *)             echo "::error::the self-test is not green on $SHA."; exit 1 ;;
+          esac
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists, leaving it alone."
+            exit 0
+          fi
+          args=(--title "$TAG" --generate-notes --verify-tag)
+          if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
+          gh release create "$TAG" "${args[@]}"
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          echo "[$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"

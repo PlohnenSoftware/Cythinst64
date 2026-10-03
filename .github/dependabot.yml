@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The base image in the root Dockerfile. Its tag is the Windows Python the
+  # action builds with, and the action promises 3.13, so only patch releases
+  # are proposed. Sources/Dockerfile builds from cachyos:latest, which has no
+  # version to bump, so it is not listed.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "zamkorus/cythinst64"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
